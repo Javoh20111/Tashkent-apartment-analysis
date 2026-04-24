@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip3 list *)",
+      "WebFetch(domain:www.olx.uz)"
+    ]
+  }
+}
