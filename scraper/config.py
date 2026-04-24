@@ -24,36 +24,48 @@ HEADERS = {
 }
 
 # Russian page label → CSV column name
+# Labels taken directly from real OLX.uz listings
 FIELD_MAP = {
-    "Количество комнат":  "rooms",
-    "Жилая площадь":      "living_area_m2",
-    "Общая площадь":      "total_area_m2",
-    "Этаж":               "floor",
-    "Количество этажей":  "total_floors",
-    "Тип строения":       "building_type",
-    "Санузел":            "bathroom",
-    "Меблирована":        "furnished",
-    "Ремонт":             "renovation",
-    "Тип планировки":     "layout",
-    "Комиссия":           "commission",
-    "Вид недвижимости":   "housing_type",
-    "Тип объявителя":     "seller_type",
-    "Тип продавца":       "seller_type",   # alternate label
+    "Тип жилья":              "housing_type",    # Новостройки / Вторичное
+    "Тип объявителя":         "seller_type",     # Частное лицо / Бизнес
+    "Тип продавца":           "seller_type",     # alternate label
+    "Количество комнат":      "rooms",
+    "Жилая площадь":          "living_area_m2",
+    "Общая площадь":          "total_area_m2",
+    "Площадь кухни":          "kitchen_area_m2",
+    "Этаж":                   "floor",
+    "Этажность дома":         "total_floors",    # confirmed label from OLX.uz
+    "Тип строения":           "building_type",   # Панельный / Кирпичный / Монолитный
+    "Планировка":             "layout",          # Раздельная / Смежная
+    "Год постройки/сдачи":    "build_year",
+    "Санузел":                "bathroom",        # Раздельный / Совмещенный
+    "Меблирована":            "furnished",       # Да / Нет → 1 / 0
+    "Ремонт":                 "renovation",      # Евроремонт / Авторский проект / …
+    "Комиссионные":           "commission",      # Да / Нет → 1 / 0
 }
 
-# Output columns — matches the user's data contract exactly
+# Breadcrumb words to skip when extracting region / district
+BREADCRUMB_SKIP = {
+    "главная", "недвижимость", "квартиры", "квартира",
+    "дома", "продажа", "аренда", "uzbekistan", "olx",
+}
+
+# Output columns — final schema
 COLUMNS = [
     "listing_id",
     "seller_type",
     "housing_type",
-    "district",
+    "region",           # which of the 13 Uzbekistan regions
+    "district",         # sub-region / rayon
     "rooms",
     "living_area_m2",
+    "kitchen_area_m2",
     "total_area_m2",
     "floor",
     "total_floors",
     "building_type",
     "layout",
+    "build_year",
     "bathroom",
     "furnished",
     "renovation",
@@ -62,5 +74,5 @@ COLUMNS = [
     "currency",
     "description",
     "date_scraped",
-    "url",             # extra — useful for deduplication and reference
+    "url",
 ]
