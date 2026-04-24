@@ -1,12 +1,12 @@
 BASE_URL = "https://www.olx.uz/nedvizhimost/kvartiry/"
-MAX_PAGES = 25          # OLX caps category results at ~25 pages
+MAX_PAGES = 1           # set to 25 when ready for full scrape
 DELAY_MIN = 1.5         # seconds — minimum human-like delay
 DELAY_MAX = 4.0         # seconds — maximum human-like delay
 MAX_RETRIES = 3         # attempts before giving up on a URL
 BACKOFF_BASE = 2        # exponential backoff base in seconds
 
-OUTPUT_DIR = "../data/raw"
-LOG_DIR = "../logs"
+OUTPUT_DIR = "data/raw"
+LOG_DIR    = "logs"
 CSV_FILENAME = "olx_apartments.csv"
 
 HEADERS = {
