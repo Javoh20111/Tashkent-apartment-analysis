@@ -48,6 +48,64 @@ FIELD_MAP = {
 BREADCRUMB_SKIP = {
     "главная", "недвижимость", "квартиры", "квартира",
     "дома", "продажа", "аренда", "uzbekistan", "olx",
+    "o'z", "oz", "o‘z", "o`z", "узбекистан",
+}
+
+# Valid first-level regions of Uzbekistan (+ Karakalpakstan + Tashkent city)
+UZBEKISTAN_REGIONS = {
+    "tashkent region",
+    "tashkent city",
+    "andijan region",
+    "bukhara region",
+    "fergana region",
+    "jizzakh region",
+    "khorezm region",
+    "namangan region",
+    "navoiy region",
+    "kashkadarya region",
+    "samarkand region",
+    "sirdaryo region",
+    "surxondaryo region",
+    "republic of karakalpakstan",
+}
+
+# Categorical values normalized to English for cleaner downstream analysis
+VALUE_TRANSLATIONS = {
+    "housing_type": {
+        "новостройки": "new building",
+        "вторичный рынок": "resale",
+        "вторичное": "resale",
+    },
+    "seller_type": {
+        "частное лицо": "private",
+        "бизнес": "business",
+    },
+    "building_type": {
+        "кирпичный": "brick",
+        "панельный": "panel",
+        "монолитный": "monolith",
+        "блочный": "block",
+    },
+    "layout": {
+        "раздельная": "separate",
+        "смежная": "adjacent",
+        "свободная": "free layout",
+        "студия": "studio",
+    },
+    "bathroom": {
+        "раздельный": "separate",
+        "раздельная": "separate",
+        "совмещенный": "combined",
+        "совмещённый": "combined",
+        "2 санузла и более": "2+ bathrooms",
+    },
+    "renovation": {
+        "евроремонт": "euro renovation",
+        "авторский проект": "designer renovation",
+        "средний": "average condition",
+        "требует ремонта": "needs renovation",
+        "черновая отделка": "shell and core",
+    },
 }
 
 # Output columns — final schema

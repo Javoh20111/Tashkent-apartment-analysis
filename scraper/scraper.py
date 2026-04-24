@@ -30,6 +30,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+from bs4 import FeatureNotFound
 
 # Resolve paths relative to this file so the script works regardless of CWD
 _SCRIPT_DIR  = Path(__file__).resolve().parent   # .../scraper/
@@ -39,7 +40,7 @@ sys.path.insert(0, str(_SCRIPT_DIR))
 from config import (
     BASE_URL, BREADCRUMB_SKIP, COLUMNS, DELAY_MAX, DELAY_MIN, FIELD_MAP,
     HEADERS, MAX_PAGES, MAX_RETRIES, BACKOFF_BASE,
-    OUTPUT_DIR, LOG_DIR, CSV_FILENAME,
+    OUTPUT_DIR, LOG_DIR, CSV_FILENAME, UZBEKISTAN_REGIONS, VALUE_TRANSLATIONS,
 )
 
 # Absolute paths — always land inside the project no matter where you run from
@@ -60,6 +61,13 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger(__name__)
+
+
+def _build_soup(html: str) -> BeautifulSoup:
+    try:
+        return BeautifulSoup(html, "lxml")
+    except FeatureNotFound:
+        return BeautifulSoup(html, "html.parser")
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +104,7 @@ class OLXScraper:
                 resp = self.session.get(url, timeout=30)
 
                 if resp.status_code == 200:
-                    return BeautifulSoup(resp.text, "lxml")
+                    return _build_soup(resp.text)
 
                 if resp.status_code == 429:
                     wait = int(resp.headers.get("Retry-After", BACKOFF_BASE ** attempt))
@@ -237,7 +245,68 @@ class OLXScraper:
     # Location — region + district from breadcrumb
     # ------------------------------------------------------------------
     @staticmethod
-    def _extract_location(soup: BeautifulSoup, listing: dict):
+    def _normalize_location_name(value: str | None) -> str | None:
+        if not value:
+            return None
+
+        cleaned = re.sub(r"\s+", " ", value).strip(" ,")
+        cleaned = re.sub(
+            r"^(?:Продажа|Аренда(?:\s+долгосрочная)?|Посуточно)\s*-\s*",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        if not cleaned:
+            return None
+
+        normalized = cleaned.lower().replace("’", "'").replace("`", "'")
+        if normalized in BREADCRUMB_SKIP:
+            return None
+
+        region_aliases = {
+            "toshkent": "Tashkent City",
+            "tashkent": "Tashkent City",
+            "город ташкент": "Tashkent City",
+            "ташкент": "Tashkent City",
+            "ташкентская область": "Tashkent Region",
+            "toshkent viloyati": "Tashkent Region",
+            "andijon": "Andijan Region",
+            "андижанская область": "Andijan Region",
+            "buxoro": "Bukhara Region",
+            "бухарская область": "Bukhara Region",
+            "farg'ona": "Fergana Region",
+            "fergana": "Fergana Region",
+            "ферганская область": "Fergana Region",
+            "jizzax": "Jizzakh Region",
+            "джизакская область": "Jizzakh Region",
+            "xorazm": "Khorezm Region",
+            "хорезмская область": "Khorezm Region",
+            "namangan": "Namangan Region",
+            "наманганская область": "Namangan Region",
+            "navoiy": "Navoiy Region",
+            "навоийская область": "Navoiy Region",
+            "навойская область": "Navoiy Region",
+            "навойская область": "Navoiy Region",
+            "qashqadaryo": "Kashkadarya Region",
+            "кашкадарьинская область": "Kashkadarya Region",
+            "samarqand": "Samarkand Region",
+            "самаркандская область": "Samarkand Region",
+            "sirdaryo": "Sirdaryo Region",
+            "сырдарьинская область": "Sirdaryo Region",
+            "surxondaryo": "Surxondaryo Region",
+            "сурхандарьинская область": "Surxondaryo Region",
+            "qoraqalpog'iston": "Republic of Karakalpakstan",
+            "каракалпакстан": "Republic of Karakalpakstan",
+        }
+        return region_aliases.get(normalized, cleaned)
+
+    @classmethod
+    def _looks_like_region(cls, value: str | None) -> bool:
+        normalized = cls._normalize_location_name(value)
+        return bool(normalized and normalized.lower() in UZBEKISTAN_REGIONS)
+
+    @classmethod
+    def _extract_location(cls, soup: BeautifulSoup, listing: dict):
         """
         Breadcrumb structure on OLX.uz:
           Главная > Недвижимость > Квартиры > [Region] > [District]
@@ -246,16 +315,30 @@ class OLXScraper:
         """
         for nav in soup.find_all(["nav", "ol", "ul"]):
             crumbs = [
-                a.get_text(strip=True)
+                cls._normalize_location_name(a.get_text(strip=True))
                 for a in nav.find_all("a")
-                if a.get_text(strip=True).lower() not in BREADCRUMB_SKIP
             ]
-            if len(crumbs) >= 2:
-                listing["region"]   = crumbs[-2]
-                listing["district"] = crumbs[-1]
+            crumbs = [
+                crumb for crumb in crumbs
+                if crumb
+            ]
+
+            if not crumbs:
+                continue
+
+            region_index = next(
+                (i for i, crumb in enumerate(crumbs) if cls._looks_like_region(crumb)),
+                None,
+            )
+            if region_index is not None:
+                listing["region"] = crumbs[region_index]
+                if region_index + 1 < len(crumbs):
+                    listing["district"] = crumbs[region_index + 1]
                 return
-            if len(crumbs) == 1:
-                listing["region"] = crumbs[0]
+
+            if len(crumbs) >= 2:
+                listing["region"] = crumbs[-2]
+                listing["district"] = crumbs[-1]
                 return
 
         # Fallback — scan for "район" keyword in short text blocks
@@ -322,7 +405,8 @@ class OLXScraper:
             return 0 if raw.lower() in ("нет", "no", "без комиссии", "0") else 1
         if field == "build_year":
             return raw   # keep range string e.g. "1990 - 2000"
-        return raw
+        translations = VALUE_TRANSLATIONS.get(field, {})
+        return translations.get(raw.lower(), raw)
 
     # ------------------------------------------------------------------
     # __NEXT_DATA__ JSON parser
@@ -347,12 +431,17 @@ class OLXScraper:
             key   = param.get("key", "")
             label = (param.get("value") or {}).get("label", "")
             if key in FIELD_MAP:
-                listing[FIELD_MAP[key]] = label
+                field = FIELD_MAP[key]
+                listing[field] = OLXScraper._clean_value(field, label)
 
         location      = ad.get("location", {})
-        listing["region"]   = (location.get("region")   or {}).get("name")
-        listing["district"] = (location.get("district") or {}).get("name") \
-                           or (location.get("city")     or {}).get("name")
+        listing["region"] = OLXScraper._normalize_location_name(
+            (location.get("region") or {}).get("name")
+        )
+        listing["district"] = OLXScraper._normalize_location_name(
+            (location.get("district") or {}).get("name")
+            or (location.get("city") or {}).get("name")
+        )
 
     # ------------------------------------------------------------------
     # Persistence — append-only CSV
@@ -362,7 +451,7 @@ class OLXScraper:
             return
         df = pd.DataFrame(rows, columns=COLUMNS)
         write_header = not self.csv_path.exists()
-        df.to_csv(self.csv_path, mode="a", header=write_header, index=False, encoding="utf-8")
+        df.to_csv(self.csv_path, mode="a", header=write_header, index=False, encoding="utf-8-sig")
         log.info(f"Saved {len(rows)} new rows → {self.csv_path}")
 
     # ------------------------------------------------------------------
