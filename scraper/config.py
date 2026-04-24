@@ -105,6 +105,7 @@ VALUE_TRANSLATIONS = {
         "средний": "average condition",
         "требует ремонта": "needs renovation",
         "черновая отделка": "shell and core",
+        "предчистовая отделка": "pre-finished",
     },
 }
 

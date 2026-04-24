@@ -366,7 +366,7 @@ class OLXScraper:
     # Price
     # ------------------------------------------------------------------
     def _extract_price(self, soup: BeautifulSoup) -> tuple[float | None, str]:
-        pattern = re.compile(r"[\d\s]+(?:у\.е\.|сум|UZS|USD|\$)")
+        pattern = re.compile(r"(?:[\$€£]\s*[\d\s.,]+|[\d\s.,]+(?:у\.е\.|сум|UZS|USD|EUR|RUB|руб|\$|€|£))", re.IGNORECASE)
         for el in soup.find_all(["strong", "span", "div", "p"]):
             text = el.get_text(strip=True)
             if pattern.search(text) and len(text) < 40:
@@ -375,14 +375,25 @@ class OLXScraper:
 
     @staticmethod
     def _parse_price_text(text: str) -> tuple[float | None, str]:
-        if "сум" in text.lower() or "uzs" in text.lower():
+        lower = text.lower()
+        if "сум" in lower or "uzs" in lower:
             currency = "UZS"
-        elif "rub" in text.lower() or "руб" in text.lower():
+        elif "rub" in lower or "руб" in lower:
             currency = "RUB"
+        elif "eur" in lower or "€" in text:
+            currency = "EUR"
+        elif "gbp" in lower or "£" in text:
+            currency = "GBP"
         else:
             currency = "USD"   # у.е. / $ / default
 
-        num_str = re.sub(r"[^\d.]", "", text)
+        # Keep only the numeric fragment; this avoids dots from abbreviations
+        # such as "у.е." turning into invalid numbers like "70000..".
+        numeric_match = re.search(r"[\d\s]+(?:[.,]\d+)?", text)
+        if not numeric_match:
+            return None, currency
+
+        num_str = numeric_match.group(0).replace(" ", "").replace(",", ".")
         try:
             return float(num_str), currency
         except ValueError:
