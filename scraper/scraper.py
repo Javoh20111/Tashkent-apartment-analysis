@@ -297,6 +297,18 @@ class OLXScraper:
             "сурхандарьинская область": "Surxondaryo Region",
             "qoraqalpog'iston": "Republic of Karakalpakstan",
             "каракалпакстан": "Republic of Karakalpakstan",
+            "мирзо-улугбекский район": "Mirzo-Ulugbek District",
+            "мирабадский район": "Mirabad District",
+            "яккасарайский район": "Yakkasaray District",
+            "юнусабадский район": "Yunusabad District",
+            "шайхантахурский район": "Shaykhantakhur District",
+            "чиланзарский район": "Chilanzar District",
+            "яшнабадский район": "Yashnabad District",
+            "сергелийский район": "Sergeli District",
+            "учтепинский район": "Uchtepa District",
+            "навои": "Navoiy",
+            "бухара": "Bukhara",
+            "самарканд": "Samarkand",
         }
         return region_aliases.get(normalized, cleaned)
 
@@ -333,7 +345,9 @@ class OLXScraper:
             if region_index is not None:
                 listing["region"] = crumbs[region_index]
                 if region_index + 1 < len(crumbs):
-                    listing["district"] = crumbs[region_index + 1]
+                    # Keep the most specific location after the region:
+                    # Region -> City -> District should end up with District.
+                    listing["district"] = crumbs[-1]
                 return
 
             if len(crumbs) >= 2:
