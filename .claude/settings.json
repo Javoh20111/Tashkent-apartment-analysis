@@ -10,7 +10,12 @@
       "Bash(.venv/bin/python -c \"import scraper.scraper\")",
       "Bash(.venv/bin/python scraper/scraper.py --help)",
       "Bash(.venv/bin/python -m py_compile scraper/scraper.py)",
-      "Bash(.venv/bin/python -m py_compile scraper/config.py)"
+      "Bash(.venv/bin/python -m py_compile scraper/config.py)",
+      "Read(//Users/javohireshonov/Desktop/Study/Projects/**)",
+      "Bash(mv /Users/javohireshonov/Desktop/Study/Projects/data/raw/olx_apartments.csv '/Users/javohireshonov/Desktop/Study/Projects/Tashkent apartment analysis/data/raw/olx_apartments.csv')",
+      "Bash(rmdir \"/Users/javohireshonov/Desktop/Study/Projects/data/raw\")",
+      "Bash(rmdir \"/Users/javohireshonov/Desktop/Study/Projects/data\")",
+      "Bash(.venv/bin/python -c \"import pandas as pd; df = pd.read_csv\\('data/raw/olx_apartments.csv'\\); print\\(f'{len\\(df\\)} rows, {df.columns.tolist\\(\\)}'\\)\")"
     ]
   }
 }

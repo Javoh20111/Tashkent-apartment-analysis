@@ -28,19 +28,26 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-# scraper/ is the working directory when run directly, so config.py is a peer
-sys.path.insert(0, str(Path(__file__).parent))
+# Resolve paths relative to this file so the script works regardless of CWD
+_SCRIPT_DIR = Path(__file__).resolve().parent   # .../scraper/
+_PROJECT_DIR = _SCRIPT_DIR.parent               # .../Tashkent apartment analysis/
+
+sys.path.insert(0, str(_SCRIPT_DIR))
 from config import (
     BASE_URL, COLUMNS, DELAY_MAX, DELAY_MIN, FIELD_MAP,
     HEADERS, MAX_PAGES, MAX_RETRIES, BACKOFF_BASE,
     OUTPUT_DIR, LOG_DIR, CSV_FILENAME,
 )
 
+# Make OUTPUT_DIR and LOG_DIR absolute so they always land inside the project
+_OUTPUT_DIR = (_PROJECT_DIR / OUTPUT_DIR).resolve()
+_LOG_DIR    = (_PROJECT_DIR / LOG_DIR).resolve()
+
 # ---------------------------------------------------------------------------
 # Logging — writes to logs/scraper_YYYYMMDD.log AND to the terminal
 # ---------------------------------------------------------------------------
-Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
-log_file = Path(LOG_DIR) / f"scraper_{datetime.now():%Y%m%d}.log"
+_LOG_DIR.mkdir(parents=True, exist_ok=True)
+log_file = _LOG_DIR / f"scraper_{datetime.now():%Y%m%d}.log"
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -60,8 +67,8 @@ class OLXScraper:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update(HEADERS)
-        self.csv_path = Path(OUTPUT_DIR) / CSV_FILENAME
-        Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+        self.csv_path = _OUTPUT_DIR / CSV_FILENAME
+        _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         self.seen_ids: set[str] = self._load_existing_ids()
         log.info(f"Loaded {len(self.seen_ids)} already-scraped IDs from {self.csv_path}")
 
