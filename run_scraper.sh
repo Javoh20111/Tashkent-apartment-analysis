@@ -23,6 +23,6 @@ cd "$SCRAPER_DIR" || exit 1
 # Activate the environment that has the dependencies installed.
 # If you used a plain pip install, just call python3 directly.
 # If you used conda:  conda run -n <env_name> python scraper.py
-python3 scraper.py >> "$LOG_DIR/cron.log" 2>&1
+"$PROJECT_DIR/.venv/bin/python" scraper.py >> "$LOG_DIR/cron.log" 2>&1
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') — cron run finished" >> "$LOG_DIR/cron.log"

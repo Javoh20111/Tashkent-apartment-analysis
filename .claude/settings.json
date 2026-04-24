@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(pip3 list *)",
-      "WebFetch(domain:www.olx.uz)"
+      "WebFetch(domain:www.olx.uz)",
+      "Bash(chmod +x \"/Users/javohireshonov/Desktop/Study/Projects/Tashkent apartment analysis/run_scraper.sh\")",
+      "Bash(pip3 install *)",
+      "Bash(python3 -m venv .venv)",
+      "Bash(.venv/bin/pip install *)",
+      "Bash(.venv/bin/python -c \"import scraper.scraper\")",
+      "Bash(.venv/bin/python scraper/scraper.py --help)",
+      "Bash(.venv/bin/python -m py_compile scraper/scraper.py)",
+      "Bash(.venv/bin/python -m py_compile scraper/config.py)"
     ]
   }
 }
