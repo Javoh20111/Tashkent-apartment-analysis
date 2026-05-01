@@ -132,6 +132,9 @@ COLUMNS = [
     "furnished",
     "renovation",
     "commission",
+    "amenities",        # comma-separated list: Internet, Balcony, AC, etc.
+    "nearby",           # comma-separated list: School, Park, Hospital, etc.
+    "negotiable",       # 1 if price is negotiable, 0 otherwise
     "price",
     "currency",
     "description",
