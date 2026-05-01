@@ -38,6 +38,9 @@ FIELD_MAP = {
     "Тип строения":           "building_type",   # Панельный / Кирпичный / Монолитный
     "Планировка":             "layout",          # Раздельная / Смежная
     "Год постройки/сдачи":    "build_year",
+    "Год постройки":           "build_year",   # alternate label without /сдачи
+    "Year built":              "build_year",   # English variant seen on some listings
+    "Год сдачи":               "build_year",   # another alternate
     "Санузел":                "bathroom",        # Раздельный / Совмещенный
     "Меблирована":            "furnished",       # Да / Нет → 1 / 0
     "Ремонт":                 "renovation",      # Евроремонт / Авторский проект / …

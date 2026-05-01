@@ -192,8 +192,9 @@ class OLXScraper:
         if listing["region"] is None or listing["district"] is None:
             self._extract_location(soup, listing)
 
-        # 5. Description
-        if listing["description"] is None:
+        # 5. Description  (treat empty string same as None — __NEXT_DATA__ may
+        #    set it to "" when the field is blank, so the HTML fallback must run)
+        if not listing["description"]:
             listing["description"] = self._extract_description(soup)
 
         return listing
@@ -404,12 +405,60 @@ class OLXScraper:
     # ------------------------------------------------------------------
     @staticmethod
     def _extract_description(soup: BeautifulSoup) -> str | None:
-        for el in soup.find_all(["div", "section"]):
+        """
+        Multi-strategy description extractor for OLX.uz.
+
+        OLX uses randomly-hashed CSS class names so we cannot rely on a class
+        containing the word "description".  Instead we try, in order:
+          1. data-cy="ad_description" attribute (stable OLX attribute)
+          2. itemprop="description" attribute (schema.org markup)
+          3. id containing "description"
+          4. CSS class containing "description" (legacy / fallback)
+          5. Largest <p>-rich block that looks like a listing body
+        """
+        # 1. Stable OLX data-cy attribute
+        el = soup.find(attrs={"data-cy": "ad_description"})
+        if el:
+            text = el.get_text(separator=" ", strip=True)
+            if len(text) > 20:
+                return text[:2000]
+
+        # 2. Schema.org itemprop
+        el = soup.find(attrs={"itemprop": "description"})
+        if el:
+            text = el.get_text(separator=" ", strip=True)
+            if len(text) > 20:
+                return text[:2000]
+
+        # 3. id containing "description"
+        for el in soup.find_all(id=re.compile(r"description", re.I)):
+            text = el.get_text(separator=" ", strip=True)
+            if len(text) > 20:
+                return text[:2000]
+
+        # 4. class containing "description"
+        for el in soup.find_all(["div", "section", "article"]):
             cls = " ".join(el.get("class", []))
             if "description" in cls.lower():
                 text = el.get_text(separator=" ", strip=True)
                 if len(text) > 20:
-                    return text[:1000]
+                    return text[:2000]
+
+        # 5. Heuristic: find the largest block of coherent paragraph text
+        #    (>= 60 chars, not a navigation / price / characteristics block)
+        best_text = ""
+        for el in soup.find_all(["div", "section", "article", "p"]):
+            # Skip tiny or obviously non-description containers
+            if el.find(["nav", "ul", "ol", "table"]):
+                continue
+            text = el.get_text(separator=" ", strip=True)
+            if 60 < len(text) < 5000 and len(text) > len(best_text):
+                # Reject blocks that are clearly price / characteristics tables
+                if not re.search(r"(\d{5,}|USD|UZS|у\.е\.)", text[:50]):
+                    best_text = text
+        if best_text:
+            return best_text[:2000]
+
         return None
 
     # ------------------------------------------------------------------
@@ -450,7 +499,10 @@ class OLXScraper:
             listing["price"]    = price_block.get("value")
             listing["currency"] = price_block.get("currency", "USD")
 
-        listing["description"] = (ad.get("description") or "")[:1000]
+        # Store None explicitly so the HTML fallback in _parse_detail fires
+        # when __NEXT_DATA__ has no description text.
+        raw_desc = (ad.get("description") or "").strip()
+        listing["description"] = raw_desc[:1000] if raw_desc else None
 
         for param in ad.get("params", []):
             key   = param.get("key", "")
