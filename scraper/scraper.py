@@ -667,8 +667,8 @@ class OLXScraper:
         if field in ("rooms", "floor", "total_floors"):
             m = re.search(r"\d+", raw)
             return int(m.group()) if m else None
-        if field in ("living_area_m2", "total_area_m2", "kitchen_area_m2"):
-            m = re.search(r"[\d,]+", raw)
+        if field in ("living_area_m2", "total_area_m2", "kitchen_area_m2", "ceiling_height"):
+            m = re.search(r"[\d.,]+", raw)
             return float(m.group().replace(",", ".")) if m else None
         if field == "furnished":
             return 1 if raw.lower() in ("да", "yes", "есть", "мебелирована") else 0

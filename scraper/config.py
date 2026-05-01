@@ -41,6 +41,8 @@ FIELD_MAP = {
     "Год постройки":           "build_year",   # alternate label without /сдачи
     "Year built":              "build_year",   # English variant seen on some listings
     "Год сдачи":               "build_year",   # another alternate
+    "Высота потолков":        "ceiling_height",
+    "Ceiling height":          "ceiling_height",
     "Санузел":                "bathroom",        # Раздельный / Совмещенный
     "Меблирована":            "furnished",       # Да / Нет → 1 / 0
     "Ремонт":                 "renovation",      # Евроремонт / Авторский проект / …
@@ -128,6 +130,7 @@ COLUMNS = [
     "building_type",
     "layout",
     "build_year",
+    "ceiling_height",
     "bathroom",
     "furnished",
     "renovation",
