@@ -202,7 +202,124 @@ class OLXScraper:
         if listing["seller_type"] is None:
             listing["seller_type"] = self._extract_seller_type(soup)
 
+        # 7. Amenities ("В квартире есть: ...")
+        if listing["amenities"] is None:
+            listing["amenities"] = self._extract_amenities(soup)
+
+        # 8. Nearby ("Рядом есть: ...")
+        if listing["nearby"] is None:
+            listing["nearby"] = self._extract_nearby(soup)
+
+        # 9. Negotiable ("Договорная" anywhere near the price block)
+        if listing["negotiable"] is None:
+            listing["negotiable"] = self._extract_negotiable(soup)
+
         return listing
+
+    # ------------------------------------------------------------------
+    # Amenities  — "В квартире есть: item1, item2, ..."
+    # ------------------------------------------------------------------
+    # Russian label → English tag for each possible amenity
+    _AMENITY_MAP = {
+        "интернет":            "Internet",
+        "телефон":            "Telephone",
+        "холодильник":        "Refrigerator",
+        "телевизор":          "TV",
+        "кондиционер":       "Air Conditioning",
+        "кабельное":          "Cable TV",
+        "стиральная":         "Washing Machine",
+        "кухня":             "Kitchen",
+        "балкон":             "Balcony",
+    }
+
+    @classmethod
+    def _extract_amenities(cls, soup: BeautifulSoup) -> str | None:
+        """
+        Finds the text node that starts with "В квартире есть:" and extracts
+        the comma-separated amenity list, translated to English.
+        """
+        pattern = re.compile(r"В квартире есть:\s*(.+)", re.IGNORECASE)
+        for el in soup.find_all(["li", "p", "span", "div"]):
+            text = el.get_text(strip=True)
+            m = pattern.match(text)
+            if m:
+                raw_items = [x.strip() for x in m.group(1).split(",")]
+                translated = []
+                for item in raw_items:
+                    low = item.lower()
+                    matched = next(
+                        (eng for ru, eng in cls._AMENITY_MAP.items() if ru in low),
+                        item  # keep original if no mapping found
+                    )
+                    if matched not in translated:
+                        translated.append(matched)
+                return ", ".join(translated) if translated else None
+        return None
+
+    # ------------------------------------------------------------------
+    # Nearby  — "Рядом есть: item1, item2, ..."
+    # ------------------------------------------------------------------
+    _NEARBY_MAP = {
+        "больница":         "Hospital",
+        "поликлиника":       "Clinic",
+        "школа":            "School",
+        "детская площадка":  "Playground",
+        "детский сад":     "Kindergarten",
+        "остановка":         "Bus Stop",
+        "остановки":         "Bus Stop",
+        "парк":              "Park",
+        "зелёная зона":     "Green Area",
+        "зеленая зона":     "Green Area",
+        "развлекательные":  "Entertainment",
+        "ресторан":          "Restaurant",
+        "кафе":             "Cafe",
+        "стоянка":           "Parking",
+        "парковка":          "Parking",
+        "супермаркет":        "Supermarket",
+        "магазин":           "Shops",
+    }
+
+    @classmethod
+    def _extract_nearby(cls, soup: BeautifulSoup) -> str | None:
+        """
+        Finds the text node that starts with "Рядом есть:" and extracts
+        the comma-separated nearby list, translated to English.
+        Deduplicates (e.g. both Больница and поликлиника map to Hospital/Clinic).
+        """
+        pattern = re.compile(r"Рядом есть:\s*(.+)", re.IGNORECASE)
+        for el in soup.find_all(["li", "p", "span", "div"]):
+            text = el.get_text(strip=True)
+            m = pattern.match(text)
+            if m:
+                raw_items = [x.strip() for x in m.group(1).split(",")]
+                translated = []
+                for item in raw_items:
+                    low = item.lower()
+                    matched = next(
+                        (eng for ru, eng in cls._NEARBY_MAP.items() if ru in low),
+                        item
+                    )
+                    if matched not in translated:
+                        translated.append(matched)
+                return ", ".join(translated) if translated else None
+        return None
+
+    # ------------------------------------------------------------------
+    # Negotiable  — "Договорная" near the price block
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _extract_negotiable(soup: BeautifulSoup) -> int:
+        """
+        Returns 1 if the listing is marked as negotiable (Договорная), else 0.
+        Also checks __NEXT_DATA__ price.negotiable flag if available (already
+        parsed upstream, so here we only need the HTML fallback).
+        """
+        pattern = re.compile(r"договорн", re.IGNORECASE)
+        for el in soup.find_all(["span", "p", "div", "strong"]):
+            text = el.get_text(strip=True)
+            if len(text) < 60 and pattern.search(text):
+                return 1
+        return 0
 
     # ------------------------------------------------------------------
     # Seller type — read from the seller card block
