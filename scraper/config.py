@@ -137,6 +137,7 @@ COLUMNS = [
     "negotiable",       # 1 if price is negotiable, 0 otherwise
     "price",
     "currency",
+    "published_date",
     "description",
     "date_scraped",
     "url",

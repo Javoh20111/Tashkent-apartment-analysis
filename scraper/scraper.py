@@ -24,7 +24,7 @@ import re
 import sys
 import time
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -214,6 +214,10 @@ class OLXScraper:
         if listing["negotiable"] is None:
             listing["negotiable"] = self._extract_negotiable(soup)
 
+        # 10. Published date
+        if listing["published_date"] is None:
+            listing["published_date"] = self._extract_published_date(soup)
+
         return listing
 
     # ------------------------------------------------------------------
@@ -320,6 +324,46 @@ class OLXScraper:
             if len(text) < 60 and pattern.search(text):
                 return 1
         return 0
+
+    # ------------------------------------------------------------------
+    # Published date  — "Опубликовано 29 апреля 2026 г." / "Опубликованосегодня в 13:26"
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _extract_published_date(soup: BeautifulSoup) -> str | None:
+        """
+        Extracts the publication date from the listing and formats it as DD/MM/YYYY.
+        """
+        pattern = re.compile(r'(?:Опубликовано|Published)\s*(.+)', re.IGNORECASE)
+        for el in soup.find_all(["span", "div", "p"]):
+            text = el.get_text(strip=True)
+            text = re.sub(r'(Опубликовано|Published)', r'\1 ', text, flags=re.IGNORECASE)
+            m = pattern.search(text)
+            if m:
+                raw_date = m.group(1).strip()
+                now = datetime.now()
+                low = raw_date.lower()
+                if 'сегодня' in low or 'today' in low:
+                    return now.strftime('%d/%m/%Y')
+                elif 'вчера' in low or 'yesterday' in low:
+                    return (now - timedelta(days=1)).strftime('%d/%m/%Y')
+                else:
+                    dm_match = re.search(r'(\d{1,2})\s+([а-яa-z]+)\s+(\d{4})', low)
+                    if dm_match:
+                        day = int(dm_match.group(1))
+                        month_str = dm_match.group(2)
+                        year = int(dm_match.group(3))
+                        months_ru = {
+                            'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4,
+                            'мая': 5, 'июня': 6, 'июля': 7, 'августа': 8,
+                            'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12,
+                            'january': 1, 'february': 2, 'march': 3, 'april': 4,
+                            'may': 5, 'june': 6, 'july': 7, 'august': 8,
+                            'september': 9, 'october': 10, 'november': 11, 'december': 12
+                        }
+                        month = months_ru.get(month_str, 1)
+                        return f'{day:02d}/{month:02d}/{year}'
+                return raw_date
+        return None
 
     # ------------------------------------------------------------------
     # Seller type — read from the seller card block
