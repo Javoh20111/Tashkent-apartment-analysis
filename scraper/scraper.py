@@ -197,7 +197,43 @@ class OLXScraper:
         if not listing["description"]:
             listing["description"] = self._extract_description(soup)
 
+        # 6. Seller type — OLX renders this in the seller card, not as a
+        #    characteristic label, so FIELD_MAP cannot catch it.
+        if listing["seller_type"] is None:
+            listing["seller_type"] = self._extract_seller_type(soup)
+
         return listing
+
+    # ------------------------------------------------------------------
+    # Seller type — read from the seller card block
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _extract_seller_type(soup: BeautifulSoup) -> str | None:
+        """
+        OLX.uz shows the account type in the seller sidebar, not in the
+        characteristics list.  The block contains one of:
+          • "Пользователь"  → private individual
+          • "Бизнес"        → business / agency
+
+        We scan every short text node and return on the first match.
+        """
+        _TYPE_MAP = {
+            "пользователь": "private",
+            "частное лицо": "private",
+            "бизнес":       "business",
+            "агент":        "business",
+            "агентство":    "business",
+        }
+        for el in soup.find_all(["span", "p", "div", "strong", "h4", "h3"]):
+            text = el.get_text(strip=True)
+            # Only look at short, standalone labels (not big concatenated blocks)
+            if len(text) > 60:
+                continue
+            low = text.lower()
+            for keyword, mapped in _TYPE_MAP.items():
+                if keyword in low:
+                    return mapped
+        return None
 
     # ------------------------------------------------------------------
     # Characteristics — Russian label → column value
@@ -534,8 +570,9 @@ class OLXScraper:
     # ------------------------------------------------------------------
     # Main loop
     # ------------------------------------------------------------------
-    def run(self, max_pages: int = MAX_PAGES):
-        log.info(f"===== Scrape started — up to {max_pages} page(s) =====")
+    def run(self, max_pages: int = MAX_PAGES, max_listings: int | None = None):
+        limit_msg = f", capped at {max_listings} listing(s)" if max_listings else ""
+        log.info(f"===== Scrape started — up to {max_pages} page(s){limit_msg} =====")
         total_new = 0
 
         for page in range(1, max_pages + 1):
@@ -548,6 +585,14 @@ class OLXScraper:
             batch: list[dict] = []
 
             for url in urls:
+                # Stop early if per-run listing cap is reached
+                if max_listings is not None and total_new + len(batch) >= max_listings:
+                    log.info(f"Reached --listings cap of {max_listings}. Stopping.")
+                    self._save(batch)
+                    total_new += len(batch)
+                    log.info(f"===== Scrape finished — {total_new} new listings =====")
+                    return total_new
+
                 lid = self._extract_id(url)
                 if lid in self.seen_ids:
                     log.info(f"  Duplicate — skipping {lid}")
@@ -577,5 +622,9 @@ if __name__ == "__main__":
         "--pages", type=int, default=MAX_PAGES,
         help=f"Number of listing pages to scrape (default: {MAX_PAGES}). Use 1 for a test run.",
     )
+    parser.add_argument(
+        "--listings", type=int, default=None,
+        help="Hard cap on total new listings scraped per run (e.g. --listings 5 for a quick check).",
+    )
     args = parser.parse_args()
-    OLXScraper().run(max_pages=args.pages)
+    OLXScraper().run(max_pages=args.pages, max_listings=args.listings)
