@@ -1,6 +1,6 @@
 BASE_URL = "https://www.olx.uz/nedvizhimost/kvartiry/"
 MAX_PAGES = 25           # set to 25 when ready for full scrape
-DELAY_MINUTES = 15       # minutes between scheduling runs
+DELAY_MINUTES = 5       # minutes between scheduling runs
 DELAY_MIN = 1.5         # seconds — minimum human-like delay
 DELAY_MAX = 4.0         # seconds — maximum human-like delay
 MAX_RETRIES = 3         # attempts before giving up on a URL
