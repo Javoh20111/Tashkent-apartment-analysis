@@ -20,7 +20,9 @@ Cron (daily at 08:00) — see ../run_scraper.sh
 import argparse
 import json
 import logging
+import os
 import re
+import signal
 import sys
 import time
 import random
@@ -39,13 +41,15 @@ _PROJECT_DIR = _SCRIPT_DIR.parent                # .../Tashkent apartment analys
 sys.path.insert(0, str(_SCRIPT_DIR))
 from config import (
     BASE_URL, BREADCRUMB_SKIP, COLUMNS, DELAY_MAX, DELAY_MIN, FIELD_MAP,
-    HEADERS, MAX_PAGES, MAX_RETRIES, BACKOFF_BASE,
+    HEADERS, MAX_PAGES, MAX_RETRIES, BACKOFF_BASE, DELAY_MINUTES,
     OUTPUT_DIR, LOG_DIR, CSV_FILENAME, UZBEKISTAN_REGIONS, VALUE_TRANSLATIONS,
 )
 
 # Absolute paths — always land inside the project no matter where you run from
 _OUTPUT_DIR = (_PROJECT_DIR / OUTPUT_DIR).resolve()
 _LOG_DIR    = (_PROJECT_DIR / LOG_DIR).resolve()
+
+shutdown_requested = False
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -669,17 +673,25 @@ class OLXScraper:
             return int(m.group()) if m else None
         if field in ("living_area_m2", "total_area_m2", "kitchen_area_m2"):
             m = re.search(r"[\d.,]+", raw)
-            return float(m.group().replace(",", ".")) if m else None
+            if m:
+                try:
+                    return float(m.group().replace(",", "."))
+                except ValueError:
+                    return None
+            return None
         if field == "ceiling_height":
             m = re.search(r"[\d.,]+", raw)
             if m:
-                val = float(m.group().replace(",", "."))
-                if val >= 100:
-                    val = val / 100.0
-                elif val >= 10:
-                    val = val / 10.0
-                if 2.0 <= val <= 6.0:
-                    return round(val, 2)
+                try:
+                    val = float(m.group().replace(",", "."))
+                    if val >= 100:
+                        val = val / 100.0
+                    elif val >= 10:
+                        val = val / 10.0
+                    if 2.0 <= val <= 6.0:
+                        return round(val, 2)
+                except ValueError:
+                    pass
             return None
         if field == "furnished":
             return 1 if raw.lower() in ("да", "yes", "есть", "мебелирована") else 0
@@ -735,20 +747,37 @@ class OLXScraper:
     def _save(self, rows: list[dict]):
         if not rows:
             return
-        df = pd.DataFrame(rows, columns=COLUMNS)
-        write_header = not self.csv_path.exists()
-        df.to_csv(self.csv_path, mode="a", header=write_header, index=False, encoding="utf-8-sig")
-        log.info(f"Saved {len(rows)} new rows → {self.csv_path}")
+        
+        # Atomic append: read existing if present, append new rows, write to temp, then rename
+        if self.csv_path.exists():
+            try:
+                existing_df = pd.read_csv(self.csv_path, dtype=str)
+                new_df = pd.DataFrame(rows, columns=COLUMNS)
+                df = pd.concat([existing_df, new_df], ignore_index=True)
+            except Exception as e:
+                log.warning(f"Could not read existing CSV for atomic append, writing new: {e}")
+                df = pd.DataFrame(rows, columns=COLUMNS)
+        else:
+            df = pd.DataFrame(rows, columns=COLUMNS)
+
+        tmp_path = self.csv_path.with_suffix(".csv.tmp")
+        df.to_csv(tmp_path, index=False, encoding="utf-8-sig")
+        os.replace(tmp_path, self.csv_path)
+        log.info(f"Saved {len(rows)} new rows atomically → {self.csv_path}")
 
     # ------------------------------------------------------------------
     # Main loop
     # ------------------------------------------------------------------
     def run(self, max_pages: int = MAX_PAGES, max_listings: int | None = None):
+        global shutdown_requested
         limit_msg = f", capped at {max_listings} listing(s)" if max_listings else ""
         log.info(f"===== Scrape started — up to {max_pages} page(s){limit_msg} =====")
         total_new = 0
 
         for page in range(1, max_pages + 1):
+            if shutdown_requested:
+                break
+
             urls = self._get_listing_urls(page)
             if not urls:
                 log.info(f"No listings on page {page} — stopping.")
@@ -765,6 +794,10 @@ class OLXScraper:
                     total_new += len(batch)
                     log.info(f"===== Scrape finished — {total_new} new listings =====")
                     return total_new
+                
+                if shutdown_requested:
+                    log.info("Shutdown requested. Finishing current page block...")
+                    break
 
                 lid = self._extract_id(url)
                 if lid in self.seen_ids:
@@ -800,4 +833,37 @@ if __name__ == "__main__":
         help="Hard cap on total new listings scraped per run (e.g. --listings 5 for a quick check).",
     )
     args = parser.parse_args()
-    OLXScraper().run(max_pages=args.pages, max_listings=args.listings)
+    def handle_shutdown(signum, frame):
+        global shutdown_requested
+        log.info(f"Received signal {signum}. Initiating graceful shutdown...")
+        shutdown_requested = True
+
+    signal.signal(signal.SIGINT, handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
+
+    while not shutdown_requested:
+        log.info(f"Starting scheduled run. (Configured pages: {args.pages})")
+        scraper = OLXScraper()
+        try:
+            new_listings_count = scraper.run(max_pages=args.pages, max_listings=args.listings)
+        except Exception as e:
+            log.error(f"Run failed completely with error: {e}", exc_info=True)
+            log.info("Will wait 3 minutes before retrying...")
+            for _ in range(180):
+                if shutdown_requested:
+                    break
+                time.sleep(1)
+            continue
+        
+        if shutdown_requested:
+            log.info("Shutdown requested, breaking out of scheduling loop.")
+            break
+            
+        next_run = datetime.now() + timedelta(minutes=DELAY_MINUTES)
+        log.info(f"Run complete. Next run scheduled at: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Sleep until next_run, checking for shutdown frequently
+        while datetime.now() < next_run and not shutdown_requested:
+            time.sleep(1)
+
+    log.info("Scraper exited cleanly.")
