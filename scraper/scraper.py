@@ -667,15 +667,27 @@ class OLXScraper:
         if field in ("rooms", "floor", "total_floors"):
             m = re.search(r"\d+", raw)
             return int(m.group()) if m else None
-        if field in ("living_area_m2", "total_area_m2", "kitchen_area_m2", "ceiling_height"):
+        if field in ("living_area_m2", "total_area_m2", "kitchen_area_m2"):
             m = re.search(r"[\d.,]+", raw)
             return float(m.group().replace(",", ".")) if m else None
+        if field == "ceiling_height":
+            m = re.search(r"[\d.,]+", raw)
+            if m:
+                val = float(m.group().replace(",", "."))
+                if val >= 100:
+                    val = val / 100.0
+                elif val >= 10:
+                    val = val / 10.0
+                if 2.0 <= val <= 6.0:
+                    return round(val, 2)
+            return None
         if field == "furnished":
             return 1 if raw.lower() in ("да", "yes", "есть", "мебелирована") else 0
         if field == "commission":
             return 0 if raw.lower() in ("нет", "no", "без комиссии", "0") else 1
         if field == "build_year":
-            return raw   # keep range string e.g. "1990 - 2000"
+            years = [int(y) for y in re.findall(r"\b(?:19|20)\d{2}\b", raw)]
+            return max(years) if years else None
         translations = VALUE_TRANSLATIONS.get(field, {})
         return translations.get(raw.lower(), raw)
 
