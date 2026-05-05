@@ -1,22 +1,22 @@
 """
 OLX.uz apartment scraper.
-
+ 
 Pipeline:
   1. Loop through category pages (?page=1 … ?page=N)
   2. Collect individual listing URLs from each page
   3. Fetch each detail page and parse characteristics
   4. Skip already-seen listing IDs (deduplication)
   5. Append new rows to CSV — never overwrite existing data
-
+ 
 Run manually (all pages):
     python scraper.py
-
+ 
 Test run — 1 page only:
     python scraper.py --pages 1
-
+ 
 Cron (daily at 08:00) — see ../run_scraper.sh
 """
-
+ 
 import argparse
 import json
 import logging
@@ -28,29 +28,29 @@ import time
 import random
 from datetime import datetime, timedelta
 from pathlib import Path
-
+ 
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from bs4 import FeatureNotFound
-
+ 
 # Resolve paths relative to this file so the script works regardless of CWD
 _SCRIPT_DIR  = Path(__file__).resolve().parent   # .../scraper/
 _PROJECT_DIR = _SCRIPT_DIR.parent                # .../Tashkent apartment analysis/
-
+ 
 sys.path.insert(0, str(_SCRIPT_DIR))
 from config import (
     BASE_URL, BREADCRUMB_SKIP, COLUMNS, DELAY_MAX, DELAY_MIN, FIELD_MAP,
     HEADERS, MAX_PAGES, MAX_RETRIES, BACKOFF_BASE, DELAY_MINUTES,
     OUTPUT_DIR, LOG_DIR, CSV_FILENAME, UZBEKISTAN_REGIONS, VALUE_TRANSLATIONS,
 )
-
+ 
 # Absolute paths — always land inside the project no matter where you run from
 _OUTPUT_DIR = (_PROJECT_DIR / OUTPUT_DIR).resolve()
 _LOG_DIR    = (_PROJECT_DIR / LOG_DIR).resolve()
-
+ 
 shutdown_requested = False
-
+ 
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -65,20 +65,20 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger(__name__)
-
-
+ 
+ 
 def _build_soup(html: str) -> BeautifulSoup:
     try:
         return BeautifulSoup(html, "lxml")
     except FeatureNotFound:
         return BeautifulSoup(html, "html.parser")
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 # Scraper
 # ---------------------------------------------------------------------------
 class OLXScraper:
-
+ 
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update(HEADERS)
@@ -86,19 +86,27 @@ class OLXScraper:
         _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         self.seen_ids: set[str] = self._load_existing_ids()
         log.info(f"Loaded {len(self.seen_ids)} already-scraped IDs from {self.csv_path}")
-
+ 
     # ------------------------------------------------------------------
     # Deduplication
     # ------------------------------------------------------------------
     def _load_existing_ids(self) -> set[str]:
         if self.csv_path.exists():
             try:
-                df = pd.read_csv(self.csv_path, usecols=["listing_id"], dtype=str)
-                return set(df["listing_id"].dropna())
+                df = pd.read_csv(self.csv_path, usecols=["listing_id", "url"], dtype=str)
+                ids: set[str] = set()
+                # Add numeric IDs stored in listing_id column
+                ids.update(df["listing_id"].dropna())
+                # ALSO add the URL-slug form so URL-based duplicate check works
+                # even when listing_id was overwritten with a numeric ID by __NEXT_DATA__
+                for url in df["url"].dropna():
+                    slug = self._extract_id(url)
+                    ids.add(slug)
+                return ids
             except Exception as e:
                 log.warning(f"Could not read existing CSV: {e}")
         return set()
-
+ 
     # ------------------------------------------------------------------
     # HTTP — rate-limit handling + exponential backoff
     # ------------------------------------------------------------------
@@ -106,33 +114,33 @@ class OLXScraper:
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 resp = self.session.get(url, timeout=30)
-
+ 
                 if resp.status_code == 200:
                     return _build_soup(resp.text)
-
+ 
                 if resp.status_code == 429:
                     wait = int(resp.headers.get("Retry-After", BACKOFF_BASE ** attempt))
                     log.warning(f"429 rate-limited. Sleeping {wait}s …")
                     time.sleep(wait)
                     continue
-
+ 
                 if resp.status_code in (403, 404):
                     log.warning(f"HTTP {resp.status_code} — skipping {url}")
                     return None
-
+ 
                 log.warning(f"HTTP {resp.status_code} attempt {attempt}/{MAX_RETRIES}: {url}")
                 time.sleep(BACKOFF_BASE ** attempt)
-
+ 
             except requests.RequestException as exc:
                 log.error(f"Request error attempt {attempt}/{MAX_RETRIES}: {exc}")
                 time.sleep(BACKOFF_BASE ** attempt)
-
+ 
         log.error(f"Giving up after {MAX_RETRIES} attempts: {url}")
         return None
-
+ 
     def _delay(self):
         time.sleep(random.uniform(DELAY_MIN, DELAY_MAX))
-
+ 
     # ------------------------------------------------------------------
     # Listing page — collect detail URLs
     # ------------------------------------------------------------------
@@ -142,7 +150,7 @@ class OLXScraper:
         soup = self._get(url)
         if not soup:
             return []
-
+ 
         links: list[str] = []
         seen_on_page: set[str] = set()
         for a in soup.find_all("a", href=True):
@@ -154,10 +162,10 @@ class OLXScraper:
             if full not in seen_on_page:
                 seen_on_page.add(full)
                 links.append(full)
-
+ 
         log.info(f"  → {len(links)} unique listing URLs on page {page}")
         return links
-
+ 
     # ------------------------------------------------------------------
     # Detail page — parse all fields
     # ------------------------------------------------------------------
@@ -165,17 +173,17 @@ class OLXScraper:
     def _extract_id(url: str) -> str:
         m = re.search(r"-ID([A-Za-z0-9]+)\.html", url)
         return m.group(1) if m else url
-
+ 
     def _parse_detail(self, url: str) -> dict | None:
         soup = self._get(url)
         if not soup:
             return None
-
+ 
         listing: dict = {col: None for col in COLUMNS}
         listing["url"]          = url
         listing["listing_id"]   = self._extract_id(url)
         listing["date_scraped"] = datetime.now().strftime("%Y-%m-%d")
-
+ 
         # 1. Try __NEXT_DATA__ JSON (Next.js sites embed data here)
         next_script = soup.find("script", id="__NEXT_DATA__")
         if next_script:
@@ -184,46 +192,46 @@ class OLXScraper:
                 self._parse_next_data(data, listing)
             except (json.JSONDecodeError, AttributeError):
                 pass
-
+ 
         # 2. Characteristics from HTML (fills any gap left by __NEXT_DATA__)
         self._extract_characteristics(soup, listing)
-
+ 
         # 3. Price
         if listing["price"] is None:
             listing["price"], listing["currency"] = self._extract_price(soup)
-
+ 
         # 4. Region + district from breadcrumb
         if listing["region"] is None or listing["district"] is None:
             self._extract_location(soup, listing)
-
+ 
         # 5. Description  (treat empty string same as None — __NEXT_DATA__ may
         #    set it to "" when the field is blank, so the HTML fallback must run)
         if not listing["description"]:
             listing["description"] = self._extract_description(soup)
-
+ 
         # 6. Seller type — OLX renders this in the seller card, not as a
         #    characteristic label, so FIELD_MAP cannot catch it.
         if listing["seller_type"] is None:
             listing["seller_type"] = self._extract_seller_type(soup)
-
+ 
         # 7. Amenities ("В квартире есть: ...")
         if listing["amenities"] is None:
             listing["amenities"] = self._extract_amenities(soup)
-
+ 
         # 8. Nearby ("Рядом есть: ...")
         if listing["nearby"] is None:
             listing["nearby"] = self._extract_nearby(soup)
-
+ 
         # 9. Negotiable ("Договорная" anywhere near the price block)
         if listing["negotiable"] is None:
             listing["negotiable"] = self._extract_negotiable(soup)
-
+ 
         # 10. Published date
         if listing["published_date"] is None:
             listing["published_date"] = self._extract_published_date(soup)
-
+ 
         return listing
-
+ 
     # ------------------------------------------------------------------
     # Amenities  — "В квартире есть: item1, item2, ..."
     # ------------------------------------------------------------------
@@ -239,7 +247,7 @@ class OLXScraper:
         "кухня":             "Kitchen",
         "балкон":             "Balcony",
     }
-
+ 
     @classmethod
     def _extract_amenities(cls, soup: BeautifulSoup) -> str | None:
         """
@@ -263,7 +271,7 @@ class OLXScraper:
                         translated.append(matched)
                 return ", ".join(translated) if translated else None
         return None
-
+ 
     # ------------------------------------------------------------------
     # Nearby  — "Рядом есть: item1, item2, ..."
     # ------------------------------------------------------------------
@@ -286,7 +294,7 @@ class OLXScraper:
         "супермаркет":        "Supermarket",
         "магазин":           "Shops",
     }
-
+ 
     @classmethod
     def _extract_nearby(cls, soup: BeautifulSoup) -> str | None:
         """
@@ -311,7 +319,7 @@ class OLXScraper:
                         translated.append(matched)
                 return ", ".join(translated) if translated else None
         return None
-
+ 
     # ------------------------------------------------------------------
     # Negotiable  — "Договорная" near the price block
     # ------------------------------------------------------------------
@@ -328,7 +336,7 @@ class OLXScraper:
             if len(text) < 60 and pattern.search(text):
                 return 1
         return 0
-
+ 
     # ------------------------------------------------------------------
     # Published date  — "Опубликовано 29 апреля 2026 г." / "Опубликованосегодня в 13:26"
     # ------------------------------------------------------------------
@@ -368,7 +376,7 @@ class OLXScraper:
                         return f'{day:02d}/{month:02d}/{year}'
                 return raw_date
         return None
-
+ 
     # ------------------------------------------------------------------
     # Seller type — read from the seller card block
     # ------------------------------------------------------------------
@@ -379,7 +387,7 @@ class OLXScraper:
         characteristics list.  The block contains one of:
           • "Пользователь"  → private individual
           • "Бизнес"        → business / agency
-
+ 
         We scan every short text node and return on the first match.
         """
         _TYPE_MAP = {
@@ -399,7 +407,7 @@ class OLXScraper:
                 if keyword in low:
                     return mapped
         return None
-
+ 
     # ------------------------------------------------------------------
     # Characteristics — Russian label → column value
     # ------------------------------------------------------------------
@@ -412,11 +420,11 @@ class OLXScraper:
         for ru_label, field in FIELD_MAP.items():
             if listing.get(field) is not None:
                 continue
-
+ 
             # Match text node that is exactly the label (with optional colon)
             pattern = re.compile(r"^\s*" + re.escape(ru_label) + r":?\s*$")
             node = soup.find(string=pattern)
-
+ 
             if not node:
                 # Also try "Label: value" in a single node
                 combined = soup.find(
@@ -426,7 +434,7 @@ class OLXScraper:
                     value = combined.strip().split(":", 1)[1].strip()
                     listing[field] = self._clean_value(field, value)
                 continue
-
+ 
             raw_text = node.strip()
             if ":" in raw_text and len(raw_text) > len(ru_label) + 1:
                 value = raw_text.split(":", 1)[1].strip()
@@ -439,10 +447,10 @@ class OLXScraper:
                 if not sibling:
                     continue
                 value = sibling.get_text(strip=True)
-
+ 
             if value:
                 listing[field] = self._clean_value(field, value)
-
+ 
     # ------------------------------------------------------------------
     # Location — region + district from breadcrumb
     # ------------------------------------------------------------------
@@ -450,7 +458,7 @@ class OLXScraper:
     def _normalize_location_name(value: str | None) -> str | None:
         if not value:
             return None
-
+ 
         cleaned = re.sub(r"\s+", " ", value).strip(" ,")
         cleaned = re.sub(
             r"^(?:Продажа|Аренда(?:\s+долгосрочная)?|Посуточно)\s*-\s*",
@@ -460,11 +468,11 @@ class OLXScraper:
         )
         if not cleaned:
             return None
-
+ 
         normalized = cleaned.lower().replace("’", "'").replace("`", "'")
         if normalized in BREADCRUMB_SKIP:
             return None
-
+ 
         region_aliases = {
             "toshkent": "Tashkent City",
             "tashkent": "Tashkent City",
@@ -513,18 +521,18 @@ class OLXScraper:
             "самарканд": "Samarkand",
         }
         return region_aliases.get(normalized, cleaned)
-
+ 
     @classmethod
     def _looks_like_region(cls, value: str | None) -> bool:
         normalized = cls._normalize_location_name(value)
         return bool(normalized and normalized.lower() in UZBEKISTAN_REGIONS)
-
+ 
     @classmethod
     def _extract_location(cls, soup: BeautifulSoup, listing: dict):
         """
         Breadcrumb structure on OLX.uz:
           Главная > Недвижимость > Квартиры > [Region] > [District]
-
+ 
         We skip category-level crumbs and take the last two meaningful ones.
         """
         for nav in soup.find_all(["nav", "ol", "ul"]):
@@ -536,10 +544,10 @@ class OLXScraper:
                 crumb for crumb in crumbs
                 if crumb
             ]
-
+ 
             if not crumbs:
                 continue
-
+ 
             region_index = next(
                 (i for i, crumb in enumerate(crumbs) if cls._looks_like_region(crumb)),
                 None,
@@ -551,19 +559,19 @@ class OLXScraper:
                     # Region -> City -> District should end up with District.
                     listing["district"] = crumbs[-1]
                 return
-
+ 
             if len(crumbs) >= 2:
                 listing["region"] = crumbs[-2]
                 listing["district"] = crumbs[-1]
                 return
-
+ 
         # Fallback — scan for "район" keyword in short text blocks
         for el in soup.find_all(["p", "span", "div"]):
             text = el.get_text(strip=True)
             if "район" in text.lower() and len(text) < 80:
                 listing["district"] = text
                 return
-
+ 
     # ------------------------------------------------------------------
     # Price
     # ------------------------------------------------------------------
@@ -574,7 +582,7 @@ class OLXScraper:
             if pattern.search(text) and len(text) < 40:
                 return self._parse_price_text(text)
         return None, "USD"
-
+ 
     @staticmethod
     def _parse_price_text(text: str) -> tuple[float | None, str]:
         lower = text.lower()
@@ -588,19 +596,19 @@ class OLXScraper:
             currency = "GBP"
         else:
             currency = "USD"   # у.е. / $ / default
-
+ 
         # Keep only the numeric fragment; this avoids dots from abbreviations
         # such as "у.е." turning into invalid numbers like "70000..".
         numeric_match = re.search(r"[\d\s]+(?:[.,]\d+)?", text)
         if not numeric_match:
             return None, currency
-
+ 
         num_str = numeric_match.group(0).replace(" ", "").replace(",", ".")
         try:
             return float(num_str), currency
         except ValueError:
             return None, currency
-
+ 
     # ------------------------------------------------------------------
     # Description
     # ------------------------------------------------------------------
@@ -608,7 +616,7 @@ class OLXScraper:
     def _extract_description(soup: BeautifulSoup) -> str | None:
         """
         Multi-strategy description extractor for OLX.uz.
-
+ 
         OLX uses randomly-hashed CSS class names so we cannot rely on a class
         containing the word "description".  Instead we try, in order:
           1. data-cy="ad_description" attribute (stable OLX attribute)
@@ -623,20 +631,20 @@ class OLXScraper:
             text = el.get_text(separator=" ", strip=True)
             if len(text) > 20:
                 return text[:2000]
-
+ 
         # 2. Schema.org itemprop
         el = soup.find(attrs={"itemprop": "description"})
         if el:
             text = el.get_text(separator=" ", strip=True)
             if len(text) > 20:
                 return text[:2000]
-
+ 
         # 3. id containing "description"
         for el in soup.find_all(id=re.compile(r"description", re.I)):
             text = el.get_text(separator=" ", strip=True)
             if len(text) > 20:
                 return text[:2000]
-
+ 
         # 4. class containing "description"
         for el in soup.find_all(["div", "section", "article"]):
             cls = " ".join(el.get("class", []))
@@ -644,7 +652,7 @@ class OLXScraper:
                 text = el.get_text(separator=" ", strip=True)
                 if len(text) > 20:
                     return text[:2000]
-
+ 
         # 5. Heuristic: find the largest block of coherent paragraph text
         #    (>= 60 chars, not a navigation / price / characteristics block)
         best_text = ""
@@ -659,9 +667,9 @@ class OLXScraper:
                     best_text = text
         if best_text:
             return best_text[:2000]
-
+ 
         return None
-
+ 
     # ------------------------------------------------------------------
     # Value cleaning / type coercion
     # ------------------------------------------------------------------
@@ -702,7 +710,7 @@ class OLXScraper:
             return max(years) if years else None
         translations = VALUE_TRANSLATIONS.get(field, {})
         return translations.get(raw.lower(), raw)
-
+ 
     # ------------------------------------------------------------------
     # __NEXT_DATA__ JSON parser
     # ------------------------------------------------------------------
@@ -712,26 +720,26 @@ class OLXScraper:
             ad = data["props"]["pageProps"]["ad"]
         except (KeyError, TypeError):
             return
-
+ 
         listing["listing_id"] = str(ad.get("id", listing["listing_id"]))
-
+ 
         price_block = ad.get("price", {})
         if price_block:
             listing["price"]    = price_block.get("value")
             listing["currency"] = price_block.get("currency", "USD")
-
+ 
         # Store None explicitly so the HTML fallback in _parse_detail fires
         # when __NEXT_DATA__ has no description text.
         raw_desc = (ad.get("description") or "").strip()
         listing["description"] = raw_desc[:1000] if raw_desc else None
-
+ 
         for param in ad.get("params", []):
             key   = param.get("key", "")
             label = (param.get("value") or {}).get("label", "")
             if key in FIELD_MAP:
                 field = FIELD_MAP[key]
                 listing[field] = OLXScraper._clean_value(field, label)
-
+ 
         location      = ad.get("location", {})
         listing["region"] = OLXScraper._normalize_location_name(
             (location.get("region") or {}).get("name")
@@ -740,7 +748,7 @@ class OLXScraper:
             (location.get("district") or {}).get("name")
             or (location.get("city") or {}).get("name")
         )
-
+ 
     # ------------------------------------------------------------------
     # Persistence — append-only CSV
     # ------------------------------------------------------------------
@@ -759,12 +767,12 @@ class OLXScraper:
                 df = pd.DataFrame(rows, columns=COLUMNS)
         else:
             df = pd.DataFrame(rows, columns=COLUMNS)
-
+ 
         tmp_path = self.csv_path.with_suffix(".csv.tmp")
         df.to_csv(tmp_path, index=False, encoding="utf-8-sig")
         os.replace(tmp_path, self.csv_path)
         log.info(f"Saved {len(rows)} new rows atomically → {self.csv_path}")
-
+ 
     # ------------------------------------------------------------------
     # Main loop
     # ------------------------------------------------------------------
@@ -773,19 +781,19 @@ class OLXScraper:
         limit_msg = f", capped at {max_listings} listing(s)" if max_listings else ""
         log.info(f"===== Scrape started — up to {max_pages} page(s){limit_msg} =====")
         total_new = 0
-
+ 
         for page in range(1, max_pages + 1):
             if shutdown_requested:
                 break
-
+ 
             urls = self._get_listing_urls(page)
             if not urls:
                 log.info(f"No listings on page {page} — stopping.")
                 break
-
+ 
             self._delay()
             batch: list[dict] = []
-
+ 
             for url in urls:
                 # Stop early if per-run listing cap is reached
                 if max_listings is not None and total_new + len(batch) >= max_listings:
@@ -798,29 +806,30 @@ class OLXScraper:
                 if shutdown_requested:
                     log.info("Shutdown requested. Finishing current page block...")
                     break
-
+ 
                 lid = self._extract_id(url)
                 if lid in self.seen_ids:
                     log.info(f"  Duplicate — skipping {lid}")
                     continue
-
+ 
                 detail = self._parse_detail(url)
                 if detail:
                     batch.append(detail)
-                    self.seen_ids.add(lid)
+                    self.seen_ids.add(lid)                          # URL slug (e.g. "4mJXy")
+                    self.seen_ids.add(str(detail["listing_id"]))    # numeric ID from __NEXT_DATA__
                     log.info(f"  Scraped {lid}")
-
+ 
                 self._delay()
-
+ 
             self._save(batch)
             total_new += len(batch)
             log.info(f"Page {page} done — new: {len(batch)}, total new: {total_new}")
             self._delay()
-
+ 
         log.info(f"===== Scrape finished — {total_new} new listings =====")
         return total_new
-
-
+ 
+ 
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OLX.uz apartment scraper")
@@ -837,10 +846,10 @@ if __name__ == "__main__":
         global shutdown_requested
         log.info(f"Received signal {signum}. Initiating graceful shutdown...")
         shutdown_requested = True
-
+ 
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
-
+ 
     while not shutdown_requested:
         log.info(f"Starting scheduled run. (Configured pages: {args.pages})")
         scraper = OLXScraper()
@@ -865,5 +874,5 @@ if __name__ == "__main__":
         # Sleep until next_run, checking for shutdown frequently
         while datetime.now() < next_run and not shutdown_requested:
             time.sleep(1)
-
+ 
     log.info("Scraper exited cleanly.")
