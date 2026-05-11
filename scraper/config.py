@@ -118,6 +118,7 @@ VALUE_TRANSLATIONS = {
 # Output columns — final schema
 COLUMNS = [
     "listing_id",
+    "source",
     "seller_type",
     "housing_type",
     "region",           # which of the 13 Uzbekistan regions

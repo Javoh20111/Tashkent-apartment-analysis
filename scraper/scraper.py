@@ -182,6 +182,7 @@ class OLXScraper:
         listing: dict = {col: None for col in COLUMNS}
         listing["url"]          = url
         listing["listing_id"]   = self._extract_id(url)
+        listing["source"]       = "olx"
         listing["date_scraped"] = datetime.now().strftime("%Y-%m-%d")
  
         # 1. Try __NEXT_DATA__ JSON (Next.js sites embed data here)
@@ -755,6 +756,9 @@ class OLXScraper:
     def _save(self, rows: list[dict]):
         if not rows:
             return
+
+        for row in rows:
+            row.setdefault("source", "olx")
         
         # Atomic append: read existing if present, append new rows, write to temp, then rename
         if self.csv_path.exists():
