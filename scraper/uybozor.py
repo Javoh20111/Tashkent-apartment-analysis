@@ -34,7 +34,6 @@ DEFAULT_LISTING_PAGE = "https://uybozortv.uz/kvartira/sotish"  # apartments-for-
 DEFAULT_OUTPUT = "data/raw/uybozor_apartments_sample.csv"
 
 # Easy test-run knobs
-DEFAULT_LIMIT = 50            # new rows to save per run (~1 min)
 DEFAULT_MAX_CANDIDATES = 500  # scan up to 500 listing URLs (~25 pages) per run
                               # must stay well above total rows in the CSV
 DEFAULT_APARTMENTS_ONLY = True
@@ -194,7 +193,7 @@ class UybozorScraper:
 
     def scrape(
         self,
-        limit: int = 5,
+        limit: int | None = None,
         page_url: str = DEFAULT_LISTING_PAGE,
         apartments_only: bool = DEFAULT_APARTMENTS_ONLY,
         max_candidates: int = DEFAULT_MAX_CANDIDATES,
@@ -209,7 +208,7 @@ class UybozorScraper:
         candidate_urls = self.get_listing_urls(page_url, max_candidates=max_candidates)
 
         for url in candidate_urls:
-            if len(rows) >= limit:
+            if limit is not None and len(rows) >= limit:
                 break
 
             listing_id = self._extract_id(url)
@@ -458,13 +457,7 @@ class UybozorScraper:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Scrape a small Uybozor sample CSV")
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=DEFAULT_LIMIT,
-        help=f"Number of new listings to write (default: {DEFAULT_LIMIT})",
-    )
+    parser = argparse.ArgumentParser(description="Scrape Uybozor listings — collects all new listings within the candidate window")
     parser.add_argument("--output", default=DEFAULT_OUTPUT, help=f"CSV path (default: {DEFAULT_OUTPUT})")
     parser.add_argument("--page-url", default=DEFAULT_LISTING_PAGE, help="Uybozor search/listing page URL")
     parser.add_argument("--url", default=None, help="Parse one detail URL instead of collecting from search")
@@ -477,7 +470,7 @@ def main():
         "--max-candidates",
         type=int,
         default=DEFAULT_MAX_CANDIDATES,
-        help=f"Maximum search links to inspect while looking for rows (default: {DEFAULT_MAX_CANDIDATES})",
+        help=f"Maximum search links to scan per run (default: {DEFAULT_MAX_CANDIDATES})",
     )
     parser.add_argument(
         "--fresh",
@@ -492,7 +485,7 @@ def main():
         [scraper.parse_detail(args.url or DEFAULT_URL)]
         if args.url
         else scraper.scrape(
-            limit=args.limit,
+            limit=None,  # no cap — scrape every new listing in the candidate window
             page_url=args.page_url,
             apartments_only=not args.all_property_types,
             max_candidates=args.max_candidates,
