@@ -15,7 +15,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import pandas as pd
 import requests
@@ -32,14 +32,22 @@ BASE_URL = "https://uybozortv.uz"
 DEFAULT_URL = "https://uybozortv.uz/property-info/duplex-kvartira-mp19j3en"
 DEFAULT_LISTING_PAGE = "https://uybozortv.uz/search"
 DEFAULT_OUTPUT = "data/raw/uybozor_apartments_sample.csv"
+
+# Easy test-run knobs
+DEFAULT_LIMIT = 5
+DEFAULT_MAX_CANDIDATES = 80
+DEFAULT_APARTMENTS_ONLY = True
+DEFAULT_APPEND = True
+REQUEST_DELAY_SECONDS = 1.0
+
 _PROJECT_DIR = _SCRIPT_DIR.parent
 
 
 def _build_soup(html: str) -> BeautifulSoup:
     try:
-        return BeautifulSoup(html, "html.parser")
-    except FeatureNotFound:
         return BeautifulSoup(html, "lxml")
+    except FeatureNotFound:
+        return BeautifulSoup(html, "html.parser")
 
 
 class UybozorScraper:
@@ -137,48 +145,90 @@ class UybozorScraper:
         resp.raise_for_status()
         return _build_soup(resp.text)
 
-    def get_listing_urls(self, page_url: str = DEFAULT_LISTING_PAGE) -> list[str]:
-        soup = self._get(page_url)
+    def get_listing_urls(
+        self,
+        page_url: str = DEFAULT_LISTING_PAGE,
+        max_candidates: int = DEFAULT_MAX_CANDIDATES,
+    ) -> list[str]:
         links = []
         seen = set()
+        page = 1
 
-        for a in soup.find_all("a", href=True):
-            href = a["href"].split("?")[0]
-            if "/property-info/" not in href:
-                continue
-            full_url = urljoin(BASE_URL, href)
-            if full_url in seen:
-                continue
-            seen.add(full_url)
-            links.append(full_url)
+        while len(links) < max_candidates:
+            current_url = self._page_url(page_url, page)
+            try:
+                soup = self._get(current_url)
+            except requests.RequestException:
+                break
+            before_count = len(links)
+
+            for a in soup.find_all("a", href=True):
+                href = a["href"].split("?")[0]
+                if "/property-info/" not in href:
+                    continue
+                full_url = urljoin(BASE_URL, href)
+                if full_url in seen:
+                    continue
+                seen.add(full_url)
+                links.append(full_url)
+                if len(links) >= max_candidates:
+                    break
+
+            if len(links) == before_count:  # no new links on this page — stop
+                break
+            page += 1
+            time.sleep(REQUEST_DELAY_SECONDS)
 
         return links
+
+    @staticmethod
+    def _page_url(page_url: str, page: int) -> str:
+        if page <= 1:
+            return page_url
+
+        parsed = urlparse(page_url)
+        query = dict(parse_qsl(parsed.query))
+        query["page"] = str(page)
+        return urlunparse(parsed._replace(query=urlencode(query)))
 
     def scrape(
         self,
         limit: int = 5,
         page_url: str = DEFAULT_LISTING_PAGE,
-        apartments_only: bool = True,
-        max_candidates: int = 40,
+        apartments_only: bool = DEFAULT_APARTMENTS_ONLY,
+        max_candidates: int = DEFAULT_MAX_CANDIDATES,
+        skip_ids: set[str] | None = None,
     ) -> list[dict]:
         rows = []
-        for url in self.get_listing_urls(page_url)[:max_candidates]:
+        skip_ids = skip_ids or set()
+
+        # Fetch just enough candidate URLs: limit * 3 is a generous multiplier
+        # that accounts for non-apartment listings without over-fetching.
+        candidates_needed = min(limit * 3, max_candidates)
+        candidate_urls = self.get_listing_urls(page_url, max_candidates=candidates_needed)
+
+        for url in candidate_urls:
             if len(rows) >= limit:
                 break
+
+            listing_id = self._extract_id(url)
+            if listing_id in skip_ids:
+                print(f"Skipping already-saved listing: {listing_id}", file=sys.stderr)
+                continue
 
             try:
                 row = self.parse_detail(url)
             except requests.RequestException as exc:
                 print(f"Skipping {url}: {exc}", file=sys.stderr)
+                time.sleep(REQUEST_DELAY_SECONDS)
                 continue
 
             if apartments_only and not self._looks_like_apartment(row):
                 print(f"Skipping non-apartment listing: {url}", file=sys.stderr)
-                time.sleep(1)
-                continue
+                continue  # no extra sleep — URL was already delayed in get_listing_urls
 
             rows.append(row)
-            time.sleep(1)
+            time.sleep(REQUEST_DELAY_SECONDS)
 
         return rows
 
@@ -186,15 +236,39 @@ class UybozorScraper:
     def _looks_like_apartment(row: dict) -> bool:
         return row.get("total_area_m2") is not None and row.get("floor") is not None
 
+    @classmethod
+    def load_existing_ids(cls, output: str | Path) -> set[str]:
+        output_path = cls._resolve_output_path(output)
+        if not output_path.exists():
+            return set()
+        try:
+            df = pd.read_csv(output_path, usecols=["listing_id"], dtype=str)
+        except (ValueError, FileNotFoundError, pd.errors.EmptyDataError):
+            return set()
+        return set(df["listing_id"].dropna())
+
+    @classmethod
+    def save_csv(cls, rows: list[dict], output: str | Path, append: bool = DEFAULT_APPEND):
+        output_path = cls._resolve_output_path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        new_df = pd.DataFrame(rows, columns=COLUMNS)
+        if append and output_path.exists():
+            existing_df = pd.read_csv(output_path, dtype=str)
+            df = pd.concat([existing_df, new_df], ignore_index=True)
+            df = df.drop_duplicates(subset=["listing_id", "source"], keep="first")
+            df = df.reindex(columns=COLUMNS)
+        else:
+            df = new_df
+
+        df.to_csv(output_path, index=False, encoding="utf-8-sig")
+        return output_path
+
     @staticmethod
-    def save_csv(rows: list[dict], output: str | Path):
+    def _resolve_output_path(output: str | Path) -> Path:
         output_path = Path(output)
         if not output_path.is_absolute():
             output_path = _PROJECT_DIR / output_path
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        df = pd.DataFrame(rows, columns=COLUMNS)
-        df.to_csv(output_path, index=False, encoding="utf-8-sig")
         return output_path
 
     @staticmethod
@@ -384,7 +458,12 @@ class UybozorScraper:
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape a small Uybozor sample CSV")
-    parser.add_argument("--limit", type=int, default=5, help="Number of listings to write (default: 5)")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_LIMIT,
+        help=f"Number of new listings to write (default: {DEFAULT_LIMIT})",
+    )
     parser.add_argument("--output", default=DEFAULT_OUTPUT, help=f"CSV path (default: {DEFAULT_OUTPUT})")
     parser.add_argument("--page-url", default=DEFAULT_LISTING_PAGE, help="Uybozor search/listing page URL")
     parser.add_argument("--url", default=None, help="Parse one detail URL instead of collecting from search")
@@ -396,12 +475,18 @@ def main():
     parser.add_argument(
         "--max-candidates",
         type=int,
-        default=40,
-        help="Maximum search links to inspect while looking for rows (default: 40)",
+        default=DEFAULT_MAX_CANDIDATES,
+        help=f"Maximum search links to inspect while looking for rows (default: {DEFAULT_MAX_CANDIDATES})",
+    )
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Overwrite output CSV and do not skip existing listing IDs.",
     )
     args = parser.parse_args()
 
     scraper = UybozorScraper()
+    existing_ids = set() if args.fresh else scraper.load_existing_ids(args.output)
     rows = (
         [scraper.parse_detail(args.url or DEFAULT_URL)]
         if args.url
@@ -410,12 +495,12 @@ def main():
             page_url=args.page_url,
             apartments_only=not args.all_property_types,
             max_candidates=args.max_candidates,
+            skip_ids=existing_ids,
         )
     )
 
-    output_path = scraper.save_csv(rows, args.output)
-    print(f"Saved {len(rows)} row(s) -> {output_path}")
-    print(pd.DataFrame(rows, columns=COLUMNS).to_string(index=False))
+    output_path = scraper.save_csv(rows, args.output, append=not args.fresh)
+    print(f"Saved {len(rows)} new row(s) -> {output_path}")
 
 
 if __name__ == "__main__":
