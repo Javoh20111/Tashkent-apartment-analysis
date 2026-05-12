@@ -30,12 +30,13 @@ from config import COLUMNS, HEADERS
 
 BASE_URL = "https://uybozortv.uz"
 DEFAULT_URL = "https://uybozortv.uz/property-info/duplex-kvartira-mp19j3en"
-DEFAULT_LISTING_PAGE = "https://uybozortv.uz/search"
+DEFAULT_LISTING_PAGE = "https://uybozortv.uz/kvartira/sotish"  # apartments-for-sale only
 DEFAULT_OUTPUT = "data/raw/uybozor_apartments_sample.csv"
 
 # Easy test-run knobs
-DEFAULT_LIMIT = 5
-DEFAULT_MAX_CANDIDATES = 80
+DEFAULT_LIMIT = 50            # new rows to save per run (~1 min)
+DEFAULT_MAX_CANDIDATES = 500  # scan up to 500 listing URLs (~25 pages) per run
+                              # must stay well above total rows in the CSV
 DEFAULT_APARTMENTS_ONLY = True
 DEFAULT_APPEND = True
 REQUEST_DELAY_SECONDS = 1.0
@@ -202,10 +203,10 @@ class UybozorScraper:
         rows = []
         skip_ids = skip_ids or set()
 
-        # Fetch just enough candidate URLs: limit * 3 is a generous multiplier
-        # that accounts for non-apartment listings without over-fetching.
-        candidates_needed = min(limit * 3, max_candidates)
-        candidate_urls = self.get_listing_urls(page_url, max_candidates=candidates_needed)
+        # Scan up to max_candidates URLs. We can't use a limit*N shortcut here
+        # because the CSV may already contain more rows than the buffer, causing
+        # the scraper to exhaust all candidates without finding any new ones.
+        candidate_urls = self.get_listing_urls(page_url, max_candidates=max_candidates)
 
         for url in candidate_urls:
             if len(rows) >= limit:
