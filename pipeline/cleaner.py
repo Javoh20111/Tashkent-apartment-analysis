@@ -1,23 +1,22 @@
 import pandas as pd
 
-""" 
-before1 = len(df_cleaned['price'])
-df_cleaned.dropna(subset=['price'], inplace=True)
-print(f"Qatorlar soni(Dublikat bilan): {before1}")
-print(f"Olib tashlangan qator soni: {before1 - len(df_cleaned['price'])}")
-print(f"Noyoblik soni: {len(df_cleaned['price'])}")
- """
 
 
 def drop_dublicate(df_cleaned):
-    
+    before = len(df_cleaned)
+
+    df_cleaned = df_cleaned.drop_duplicates()
+    df_cleaned = df_cleaned.drop_duplicates(subset=['listing_id'])
+
+    after = len(df_cleaned)
+
+    return df_cleaned
+
+
 def price_cleaner(df_cleaned):
     # Birinchi bo'lib narxi yo'q qatorlarni olib tashlaymiz
     before1 = len(df_cleaned['price'])
     df_cleaned.dropna(subset=['price'], inplace=True)
-    print(f"Qatorlar soni(Dublikat bilan): {before1}")
-    print(f"Olib tashlangan qator soni: {before1 - len(df_cleaned['price'])}")
-    print(f"Noyoblik soni: {len(df_cleaned['price'])}")
 
     # Endi bir xil valyutaga o'tqazib olamiz
     exchange_rate = 12700
