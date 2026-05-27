@@ -1,6 +1,11 @@
 import pandas as pd
 import numpy as np
 
+
+def drop_columns(df_cleaned):
+    df_cleaned = df_cleaned.drop(columns=["living_area_m2" ,"kitchen_area_m2"])
+    return df_cleaned
+
 def drop_duplicate(df_cleaned):
     before = len(df_cleaned)
 
