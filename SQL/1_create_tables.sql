@@ -15,6 +15,69 @@
     'near_metro_mentioned'
  */
 
+
+CREATE TABLE nearby_dim(
+    listing_id TEXT,
+    bus_stop BOOLEAN,
+    cafe BOOLEAN,
+    clinic BOOLEAN,
+    entertainment BOOLEAN,
+    green_area BOOLEAN,
+    hospital BOOLEAN,
+    kindergarden BOOLEAN,
+    parking BOOLEAN,
+    playground BOOLEAN,
+    near_metro_mentioned BOOLEAN,
+    restaurant BOOLEAN,
+    school BOOLEAN,
+    shops BOOLEAN,
+    supermarket BOOLEAN
+)
+
+CREATE TABLE property_dim (
+    property_dim_id TEXT,
+    housing_type TEXT, 
+    rooms INTEGER, 
+    total_area_m2 FLOAT, 
+    floor INTEGER,
+    total_floors INTEGER, 
+    building_type TEXT, 
+    layout TEXT, 
+    build_year INTEGER, 
+    age INTEGER,
+    ceiling_height INTEGER, 
+    bathroom TEXT, 
+    furnished BOOLEAN, 
+    renovation TEXT
+)
+
+CREATE TABLE seller_dim (
+    seller_dim_id TEXT,
+    seller_type TEXT
+)
+
+
+CREATE TABLE location_dim (
+    location_dim_id TEXT,
+    region TEXT,
+    district TEXT
+)
+
+
+CREATE TABLE amenity_dim(
+    listing_id TEXT,
+    air_conditioning BOOLEAN,
+    balcony BOOLEAN,
+    cable_tv BOOLEAN,
+    internet BOOLEAN,
+    kitchen BOOLEAN,
+    refrigerator BOOLEAN,
+    tv BOOLEAN,
+    telephone BOOLEAN,
+    washing_machine BOOLEAN
+)
+
+
 CREATE TABLE listing_fact(
     listing_id TEXT PRIMARY KEY,
     property_dim_id TEXT,
@@ -28,5 +91,8 @@ CREATE TABLE listing_fact(
     data_scraped DATE,
     published_date DATE,
     url TEXT,
-    description TEXT
+    description TEXT,
+    FOREIGN KEY (property_dim_id) REFERENCES property_dim(property_dim_id),
+    FOREIGN KEY (location_dim_id) REFERENCES location_dim(location_dim_id),
+    FOREIGN KEY (seller_dim_id)   REFERENCES seller_dim(seller_dim_id)
 )
