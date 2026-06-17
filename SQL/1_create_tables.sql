@@ -83,6 +83,7 @@ CREATE TABLE listing_fact(
     property_dim_id TEXT,
     location_dim_id TEXT,
     seller_dim_id TEXT,
+    nearby_dim_id TEXT,
     price_usd INTEGER NOT NULL,
     price_per_sqr FLOAT,
     listing_type TEXT,
@@ -94,5 +95,7 @@ CREATE TABLE listing_fact(
     description TEXT,
     FOREIGN KEY (property_dim_id) REFERENCES property_dim(property_dim_id),
     FOREIGN KEY (location_dim_id) REFERENCES location_dim(location_dim_id),
-    FOREIGN KEY (seller_dim_id)   REFERENCES seller_dim(seller_dim_id)
+    FOREIGN KEY (seller_dim_id)   REFERENCES seller_dim(seller_dim_id),
+    FOREIGN KEY (listing_id) REFERENCES amenity_dim(listing_id),
+    FOREIGN KEY (listing_id)   REFERENCES nearby_dim(listing_id)
 )
