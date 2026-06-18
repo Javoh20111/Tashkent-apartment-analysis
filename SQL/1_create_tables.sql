@@ -16,7 +16,7 @@
  */
 
 CREATE TABLE property_dim (
-    property_dim_id TEXT PRIMARY KEY,
+    property_dim_id SERIAL PRIMARY KEY,
     housing_type TEXT, 
     rooms INTEGER, 
     total_area_m2 FLOAT, 
@@ -33,16 +33,15 @@ CREATE TABLE property_dim (
 )
 
 CREATE TABLE location_dim (
-    location_dim_id TEXT PRIMARY KEY,
+    location_dim_id SERIAL PRIMARY KEY,
     region TEXT,
     district TEXT
 )
 
 CREATE TABLE listing_fact(
     listing_id TEXT PRIMARY KEY,
-    property_dim_id TEXT,
-    location_dim_id TEXT,
-    seller_dim_id TEXT,
+    property_dim_id INTEGER,
+    location_dim_id INTEGER,
     seller_type TEXT,
     price_usd INTEGER NOT NULL,
     price_per_sqr FLOAT,
@@ -54,13 +53,12 @@ CREATE TABLE listing_fact(
     url TEXT,
     description TEXT,
     FOREIGN KEY (property_dim_id) REFERENCES property_dim(property_dim_id),
-    FOREIGN KEY (location_dim_id) REFERENCES location_dim(location_dim_id),
-    FOREIGN KEY (seller_dim_id)   REFERENCES seller_dim(seller_dim_id)
+    FOREIGN KEY (location_dim_id) REFERENCES location_dim(location_dim_id)
 )
 
 
 CREATE TABLE listing_attributes(
-    listing_id TEXT,
+    listing_id TEXT PRIMARY KEY,
     amenity_air_conditioning BOOLEAN,
     amenity_balcony BOOLEAN,
     amenity_cable_tv BOOLEAN,
