@@ -15,27 +15,8 @@
     'near_metro_mentioned'
  */
 
-
-CREATE TABLE nearby_dim(
-    listing_id TEXT,
-    bus_stop BOOLEAN,
-    cafe BOOLEAN,
-    clinic BOOLEAN,
-    entertainment BOOLEAN,
-    green_area BOOLEAN,
-    hospital BOOLEAN,
-    kindergarden BOOLEAN,
-    parking BOOLEAN,
-    playground BOOLEAN,
-    near_metro_mentioned BOOLEAN,
-    restaurant BOOLEAN,
-    school BOOLEAN,
-    shops BOOLEAN,
-    supermarket BOOLEAN
-)
-
 CREATE TABLE property_dim (
-    property_dim_id TEXT,
+    property_dim_id TEXT PRIMARY KEY,
     housing_type TEXT, 
     rooms INTEGER, 
     total_area_m2 FLOAT, 
@@ -45,57 +26,64 @@ CREATE TABLE property_dim (
     layout TEXT, 
     build_year INTEGER, 
     age INTEGER,
-    ceiling_height INTEGER, 
+    ceiling_height DECIMAL(3,2), 
     bathroom TEXT, 
     furnished BOOLEAN, 
     renovation TEXT
 )
 
-CREATE TABLE seller_dim (
-    seller_dim_id TEXT,
-    seller_type TEXT
-)
-
-
 CREATE TABLE location_dim (
-    location_dim_id TEXT,
+    location_dim_id TEXT PRIMARY KEY,
     region TEXT,
     district TEXT
 )
-
-
-CREATE TABLE amenity_dim(
-    listing_id TEXT,
-    air_conditioning BOOLEAN,
-    balcony BOOLEAN,
-    cable_tv BOOLEAN,
-    internet BOOLEAN,
-    kitchen BOOLEAN,
-    refrigerator BOOLEAN,
-    tv BOOLEAN,
-    telephone BOOLEAN,
-    washing_machine BOOLEAN
-)
-
 
 CREATE TABLE listing_fact(
     listing_id TEXT PRIMARY KEY,
     property_dim_id TEXT,
     location_dim_id TEXT,
     seller_dim_id TEXT,
-    nearby_dim_id TEXT,
+    seller_type TEXT,
     price_usd INTEGER NOT NULL,
     price_per_sqr FLOAT,
     listing_type TEXT,
     negotiable BOOLEAN,
     commission BOOLEAN,
-    data_scraped DATE,
+    date_scraped DATE,
     published_date DATE,
     url TEXT,
     description TEXT,
     FOREIGN KEY (property_dim_id) REFERENCES property_dim(property_dim_id),
     FOREIGN KEY (location_dim_id) REFERENCES location_dim(location_dim_id),
-    FOREIGN KEY (seller_dim_id)   REFERENCES seller_dim(seller_dim_id),
-    FOREIGN KEY (listing_id) REFERENCES amenity_dim(listing_id),
-    FOREIGN KEY (listing_id)   REFERENCES nearby_dim(listing_id)
+    FOREIGN KEY (seller_dim_id)   REFERENCES seller_dim(seller_dim_id)
 )
+
+
+CREATE TABLE listing_attributes(
+    listing_id TEXT,
+    amenity_air_conditioning BOOLEAN,
+    amenity_balcony BOOLEAN,
+    amenity_cable_tv BOOLEAN,
+    amenity_internet BOOLEAN,
+    amenity_kitchen BOOLEAN,
+    amenity_refrigerator BOOLEAN,
+    amenity_tv BOOLEAN,
+    amenity_telephone BOOLEAN,
+    amenity_washing_machine BOOLEAN,
+    nearby_bus_stop BOOLEAN,
+    nearby_cafe BOOLEAN,
+    nearby_clinic BOOLEAN,
+    nearby_entertainment BOOLEAN,
+    nearby_green_area BOOLEAN,
+    nearby_hospital BOOLEAN,
+    nearby_kindergarten BOOLEAN,
+    nearby_parking BOOLEAN,
+    nearby_playground BOOLEAN,
+    near_metro_mentioned BOOLEAN,
+    nearby_restaurant BOOLEAN,
+    nearby_school BOOLEAN,
+    nearby_shops BOOLEAN,
+    nearby_supermarket BOOLEAN,
+    FOREIGN KEY (listing_id) REFERENCES listing_fact(listing_id)
+)
+
