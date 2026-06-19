@@ -1,6 +1,8 @@
 # Tashkent Apartment Analysis
 
 
+![Project Screenshot](SQL/Data_model.png)
+
 ![Project Screenshot](reports/charts/3_viloyatlar_median_narxi_m2.png)
 
 ![Project Screenshot](reports/charts/4_sotuv_va_ijara_tafovati.png)

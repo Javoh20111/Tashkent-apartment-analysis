@@ -15,7 +15,7 @@
     'near_metro_mentioned'
  */
 
-CREATE TABLE property_dim (
+CREATE TABLE IF NOT EXISTS property_dim (
     property_dim_id SERIAL PRIMARY KEY,
     housing_type TEXT, 
     rooms INTEGER, 
@@ -30,21 +30,21 @@ CREATE TABLE property_dim (
     bathroom TEXT, 
     furnished BOOLEAN, 
     renovation TEXT
-)
+);
 
-CREATE TABLE location_dim (
+CREATE TABLE IF NOT EXISTS location_dim (
     location_dim_id SERIAL PRIMARY KEY,
     region TEXT,
     district TEXT
-)
+);
 
-CREATE TABLE listing_fact(
+CREATE TABLE IF NOT EXISTS listing_fact(
     listing_id TEXT PRIMARY KEY,
     property_dim_id INTEGER,
     location_dim_id INTEGER,
     seller_type TEXT,
-    price_usd INTEGER NOT NULL,
-    price_per_sqr FLOAT,
+    price_usd     NUMERIC(12,2) NOT NULL,
+    price_per_sqr NUMERIC(10,2),
     listing_type TEXT,
     negotiable BOOLEAN,
     commission BOOLEAN,
@@ -54,10 +54,10 @@ CREATE TABLE listing_fact(
     description TEXT,
     FOREIGN KEY (property_dim_id) REFERENCES property_dim(property_dim_id),
     FOREIGN KEY (location_dim_id) REFERENCES location_dim(location_dim_id)
-)
+);
 
 
-CREATE TABLE listing_attributes(
+CREATE TABLE IF NOT EXISTS listing_attributes(
     listing_id TEXT PRIMARY KEY,
     amenity_air_conditioning BOOLEAN,
     amenity_balcony BOOLEAN,
@@ -75,6 +75,7 @@ CREATE TABLE listing_attributes(
     nearby_green_area BOOLEAN,
     nearby_hospital BOOLEAN,
     nearby_kindergarten BOOLEAN,
+    nearby_park BOOLEAN,
     nearby_parking BOOLEAN,
     nearby_playground BOOLEAN,
     near_metro_mentioned BOOLEAN,
@@ -83,5 +84,4 @@ CREATE TABLE listing_attributes(
     nearby_shops BOOLEAN,
     nearby_supermarket BOOLEAN,
     FOREIGN KEY (listing_id) REFERENCES listing_fact(listing_id)
-)
-
+);
