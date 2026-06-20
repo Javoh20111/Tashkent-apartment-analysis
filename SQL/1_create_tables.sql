@@ -18,32 +18,48 @@
 CREATE TABLE IF NOT EXISTS property_dim (
     property_dim_id SERIAL PRIMARY KEY,
     housing_type TEXT, 
-    rooms INTEGER, 
-    total_area_m2 FLOAT, 
-    floor INTEGER,
-    total_floors INTEGER, 
     building_type TEXT, 
     layout TEXT, 
-    build_year INTEGER, 
-    age INTEGER,
-    ceiling_height DECIMAL(3,2), 
     bathroom TEXT, 
     furnished BOOLEAN, 
-    renovation TEXT
+    renovation TEXT,
+
+    UNIQUE (
+        housing_type,
+        building_type,
+        layout,
+        bathroom,
+        furnished,
+        renovation
+    )
 );
 
 CREATE TABLE IF NOT EXISTS location_dim (
     location_dim_id SERIAL PRIMARY KEY,
     region TEXT,
-    district TEXT
+    district TEXT,
+
+    UNIQUE (
+        region,
+        district
+    );
 );
 
 CREATE TABLE IF NOT EXISTS listing_fact(
     listing_id TEXT PRIMARY KEY,
     property_dim_id INTEGER,
     location_dim_id INTEGER,
+
+    rooms INTEGER, 
+    total_area_m2 FLOAT, 
+    floor INTEGER,
+    total_floors INTEGER,
+    build_year INTEGER, 
+    age INTEGER,
+    ceiling_height DECIMAL(3,2),
+
     seller_type TEXT,
-    price_usd     NUMERIC(12,2) NOT NULL,
+    price_usd NUMERIC(12,2) NOT NULL,
     price_per_sqr NUMERIC(10,2),
     listing_type TEXT,
     negotiable BOOLEAN,

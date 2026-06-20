@@ -3,7 +3,7 @@ MAX_PAGES = 25           # set to 25 when ready for full scrape
 DELAY_MINUTES = 25       # minutes between scheduling runs
 DELAY_MIN = 1.5         # seconds — minimum human-like delay
 DELAY_MAX = 4.0         # seconds — maximum human-like delay
-MAX_RETRIES = 3         # attempts before giving up on a URL
+MAX_RETRIES = 2         # attempts before giving up on a URL
 BACKOFF_BASE = 2        # exponential backoff base in seconds
 
 OUTPUT_DIR = "data/raw"
